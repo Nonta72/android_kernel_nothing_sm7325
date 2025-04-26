@@ -27,7 +27,7 @@
 #include "qdf_platform.h"
 
 static qdf_mutex_t g_init_deinit_lock;
-bool ipa_is_ready(void)
+bool ipa_cb_is_ready(void)
 {
 	return g_ipa_is_ready;
 }
