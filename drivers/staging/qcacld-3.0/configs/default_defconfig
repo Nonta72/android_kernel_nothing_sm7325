@@ -629,16 +629,16 @@ BUILD_DEBUG_VERSION := y
 #Enable this flag to build driver in diag version
 BUILD_DIAG_VERSION := y
 
-ifeq ($(CONFIG_SLUB_DEBUG), y)
-	PANIC_ON_BUG := y
-	WLAN_WARN_ON_ASSERT := y
-else ifeq ($(CONFIG_PERF_DEBUG), y)
-	PANIC_ON_BUG := y
-	WLAN_WARN_ON_ASSERT := y
-else
+#ifeq ($(CONFIG_SLUB_DEBUG), y)
+#	PANIC_ON_BUG := y
+#	WLAN_WARN_ON_ASSERT := y
+#else ifeq ($(CONFIG_PERF_DEBUG), y)
+#	PANIC_ON_BUG := y
+#	WLAN_WARN_ON_ASSERT := y
+#else
 	PANIC_ON_BUG := n
 	WLAN_WARN_ON_ASSERT := n
-endif
+#endif
 
 # Compile all log levels by default
 CONFIG_WLAN_LOG_FATAL := y
