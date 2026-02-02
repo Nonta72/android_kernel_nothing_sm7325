@@ -10,7 +10,7 @@
 
 #include <linux/version.h>
 
-#if LINUX_VERSION_IS_LESS(5, 5, 0)
+#if LINUX_VERSION_IS_LESS(5, 9, 0)
 
 #ifndef _LINUX_SOCKPTR_H
 #define _LINUX_SOCKPTR_H
@@ -61,6 +61,41 @@ static inline int copy_from_sockptr(void *dst, sockptr_t src, size_t size)
 {
 	return copy_from_sockptr_offset(dst, src, 0, size);
 }
+
+#if LINUX_VERSION_IS_LESS(6,9,0)
+static inline int copy_safe_from_sockptr(void *dst, size_t ksize,
+					 sockptr_t optval, unsigned int optlen)
+{
+	if (optlen < ksize)
+		return -EINVAL;
+	return copy_from_sockptr(dst, optval, ksize);
+}
+#endif
+
+#if LINUX_VERSION_IS_LESS(6,7,0)
+static inline int copy_struct_from_sockptr(void *dst, size_t ksize,
+		sockptr_t src, size_t usize)
+{
+	size_t size = min(ksize, usize);
+	size_t rest = max(ksize, usize) - size;
+
+	if (!sockptr_is_kernel(src))
+		return copy_struct_from_user(dst, ksize, src.user, size);
+
+	if (usize < ksize) {
+		memset(dst + size, 0, rest);
+	} else if (usize > ksize) {
+		char *p = src.kernel;
+
+		while (rest--) {
+			if (*p++)
+				return -E2BIG;
+		}
+	}
+	memcpy(dst, src.kernel, size);
+	return 0;
+}
+#endif
 
 static inline int copy_to_sockptr_offset(sockptr_t dst, size_t offset,
 		const void *src, size_t size)

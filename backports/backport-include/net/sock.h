@@ -3,23 +3,6 @@
 #include_next <net/sock.h>
 #include <linux/version.h>
 
-
-#if LINUX_VERSION_IS_LESS(4,5,0)
-#define sk_set_bit LINUX_BACKPORT(sk_set_bit)
-static inline void sk_set_bit(int nr, struct sock *sk)
-{
-	set_bit(nr, &sk->sk_socket->flags);
-}
-#endif /* < 4.5 */
-
-#if LINUX_VERSION_IS_LESS(4,5,0)
-#define sk_clear_bit LINUX_BACKPORT(sk_clear_bit)
-static inline void sk_clear_bit(int nr, struct sock *sk)
-{
-	clear_bit(nr, &sk->sk_socket->flags);
-}
-#endif /* < 4.5 */
-
 #if LINUX_VERSION_IS_LESS(4,16,0)
 #define sk_pacing_shift_update LINUX_BACKPORT(sk_pacing_shift_update)
 static inline void sk_pacing_shift_update(struct sock *sk, int val)
@@ -40,19 +23,30 @@ static inline void backport_sk_error_report(struct sock *sk)
 #define sk_error_report(sk) LINUX_BACKPORT(sk_error_report(sk))
 #endif /* <= 5.14 */
 
-#if LINUX_VERSION_IS_LESS(6,1,0)
-#define skb_pull_data LINUX_BACKPORT(skb_pull_data)
-static inline void *skb_pull_data(struct sk_buff *skb, size_t len)
+#if LINUX_VERSION_IS_LESS(6,4,0)
+void __sock_recv_cmsgs(struct msghdr *msg, struct sock *sk,
+                       struct sk_buff *skb);
+
+#define SK_DEFAULT_STAMP (-1L * NSEC_PER_SEC)
+static inline void sock_recv_cmsgs(struct msghdr *msg, struct sock *sk,
+                                   struct sk_buff *skb)
 {
-	void *data = skb->data;
+#define SOCK_RCVMARK 27 /* Hardcoded according to ABI */
+#define FLAGS_RECV_CMSGS ((1UL << SOCK_RXQ_OVFL)                        | \
+                           (1UL << SOCK_RCVTSTAMP)                      | \
+                           (1UL << SOCK_RCVMARK))
+#define TSFLAGS_ANY       (SOF_TIMESTAMPING_SOFTWARE                    | \
+                           SOF_TIMESTAMPING_RAW_HARDWARE)
 
-	if (skb->len < len)
-		return NULL;
-
-	skb_pull(skb, len);
-
-	return data;
+        if (sk->sk_flags & FLAGS_RECV_CMSGS ||
+            READ_ONCE(sk->sk_tsflags) & TSFLAGS_ANY)
+                __sock_recv_cmsgs(msg, sk, skb);
+        else if (unlikely(sock_flag(sk, SOCK_TIMESTAMP)))
+                sock_write_timestamp(sk, skb->tstamp);
+        else if (unlikely(sock_read_timestamp(sk) == SK_DEFAULT_STAMP))
+                sock_write_timestamp(sk, 0);
 }
-#endif
+ 
+#endif /* <= 6.4.0 */ 
 
 #endif /* __BACKPORT_NET_SOCK_H */
