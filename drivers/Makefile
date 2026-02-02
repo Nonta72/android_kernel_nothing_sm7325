@@ -119,7 +119,13 @@ obj-$(CONFIG_HWMON)		+= hwmon/
 obj-$(CONFIG_THERMAL)		+= thermal/
 obj-$(CONFIG_WATCHDOG)		+= watchdog/
 obj-$(CONFIG_MD)		+= md/
+
+# Hack around this to build the MSM_BT_POWER driver
 obj-$(CONFIG_BT)		+= bluetooth/
+ifneq ($(CONFIG_MSM_BT_POWER), )
+obj-y				+= bluetooth/
+endif
+
 obj-$(CONFIG_ACCESSIBILITY)	+= accessibility/
 obj-$(CONFIG_ISDN)		+= isdn/
 obj-$(CONFIG_EDAC)		+= edac/
