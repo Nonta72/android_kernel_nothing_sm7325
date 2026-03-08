@@ -6,7 +6,6 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
-/* TODO: Make this const again */
 static struct class bt_class = {
 	.name = "bluetooth",
 };

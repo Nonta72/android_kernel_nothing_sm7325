@@ -739,7 +739,7 @@ static void hidp_stop(struct hid_device *hid)
 	hid->claimed = 0;
 }
 
-static const struct hid_ll_driver hidp_hid_driver = {
+static struct hid_ll_driver hidp_driver = {
 	.parse = hidp_parse,
 	.start = hidp_start,
 	.stop = hidp_stop,
@@ -791,7 +791,7 @@ static int hidp_setup_hid(struct hidp_session *session,
 		 &l2cap_pi(session->ctrl_sock->sk)->chan->dst);
 
 	hid->dev.parent = &session->conn->hcon->dev;
-	hid->ll_driver = &hidp_hid_driver;
+	hid->ll_driver = &hidp_driver;
 
 	/* True if device is blocked in drivers/hid/hid-quirks.c */
 	if (hid_ignore(hid)) {
@@ -1304,7 +1304,7 @@ static int hidp_session_thread(void *arg)
 	l2cap_unregister_user(session->conn, &session->user);
 	hidp_session_put(session);
 
-	module_put_and_kthread_exit(0);
+	module_put_and_exit(0);
 	return 0;
 }
 

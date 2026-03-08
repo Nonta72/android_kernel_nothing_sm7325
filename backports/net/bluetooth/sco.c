@@ -256,6 +256,7 @@ static int sco_connect(struct sock *sk)
 
 	BT_DBG("%pMR -> %pMR", &sco_pi(sk)->src, &sco_pi(sk)->dst);
 
+	printk("FHEKKKK");
 	hdev = hci_get_route(&sco_pi(sk)->dst, &sco_pi(sk)->src, BDADDR_BREDR);
 	if (!hdev)
 		return -EHOSTUNREACH;
@@ -267,6 +268,8 @@ static int sco_connect(struct sock *sk)
 	else
 		type = SCO_LINK;
 
+	printk("whew");
+
 	switch (sco_pi(sk)->setting & SCO_AIRMODE_MASK) {
 	case SCO_AIRMODE_TRANSP:
 		if (!lmp_transp_capable(hdev) || !lmp_esco_capable(hdev)) {
@@ -277,8 +280,9 @@ static int sco_connect(struct sock *sk)
 	}
 
 	hcon = hci_connect_sco(hdev, type, &sco_pi(sk)->dst,
-			       sco_pi(sk)->setting, &sco_pi(sk)->codec,
-			       sk->sk_sndtimeo);
+			       sco_pi(sk)->setting, &sco_pi(sk)->codec);
+	printk("WEHWEW");
+
 	if (IS_ERR(hcon)) {
 		err = PTR_ERR(hcon);
 		goto unlock;
@@ -298,6 +302,8 @@ static int sco_connect(struct sock *sk)
 		release_sock(sk);
 		goto unlock;
 	}
+
+	printk("meow, state is %d", hcon->state);
 
 	/* Update source addr of the socket */
 	bacpy(&sco_pi(sk)->src, &hcon->src);
@@ -433,6 +439,13 @@ static void sco_sock_kill(struct sock *sk)
 		return;
 
 	BT_DBG("sk %p state %d", sk, sk->sk_state);
+
+	/* Sock is dead, so set conn->sk to NULL to avoid possible UAF */
+	if (sco_pi(sk)->conn) {
+		sco_conn_lock(sco_pi(sk)->conn);
+		sco_pi(sk)->conn->sk = NULL;
+		sco_conn_unlock(sco_pi(sk)->conn);
+	}
 
 	/* Kill poor orphan */
 	bt_sock_unlink(&sco_sk_list, sk);
@@ -834,10 +847,10 @@ static int sco_sock_recvmsg(struct socket *sock, struct msghdr *msg,
 }
 
 static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
-			       char __user *ooptval, unsigned int optlen)
+			       char __user *poptval, unsigned int optlen)
 {
 	struct sock *sk = sock->sk;
-	sockptr_t optval = USER_SOCKPTR(ooptval);
+	sockptr_t optval = USER_SOCKPTR(poptval);
 	int err = 0;
 	struct bt_voice voice;
 	u32 opt;
@@ -857,7 +870,7 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -876,8 +889,8 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 
 		voice.setting = sco_pi(sk)->setting;
 
-		err = copy_safe_from_sockptr(&voice, sizeof(voice), optval,
-					     optlen);
+		err = bt_copy_from_sockptr(&voice, sizeof(voice), optval,
+					   optlen);
 		if (err)
 			break;
 
@@ -900,7 +913,7 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 		break;
 
 	case BT_PKT_STATUS:
-		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -943,8 +956,7 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		err = copy_struct_from_sockptr(buffer, sizeof(buffer), optval,
-					       optlen);
+		err = bt_copy_from_sockptr(buffer, optlen, optval, optlen);
 		if (err) {
 			hci_dev_put(hdev);
 			break;

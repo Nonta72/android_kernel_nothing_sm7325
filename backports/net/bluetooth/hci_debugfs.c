@@ -22,15 +22,13 @@
 */
 
 #include <linux/debugfs.h>
-
-// TODO: Fix this
-//#include <linux/kstrtox.h>
-#include <linux/kernel.h>
+#include <linux/kstrtox.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
 #include "smp.h"
+#include "hci_request.h"
 #include "hci_debugfs.h"
 
 #define DEFINE_QUIRK_ATTRIBUTE(__name, __quirk)				      \

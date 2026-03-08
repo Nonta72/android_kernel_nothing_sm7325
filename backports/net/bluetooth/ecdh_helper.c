@@ -126,7 +126,6 @@ int set_ecdh_privkey(struct crypto_kpp *tfm, const u8 private_key[32])
 		goto free_all;
 
 	err = crypto_kpp_set_secret(tfm, buf, buf_len);
-
 	/* fall through */
 free_all:
 	kfree_sensitive(buf);
@@ -168,7 +167,6 @@ int generate_ecdh_public_key(struct crypto_kpp *tfm, u8 public_key[64])
 				 crypto_req_done, &result);
 
 	err = crypto_kpp_generate_public_key(req);
-
 	err = crypto_wait_req(err, &result);
 	if (err < 0)
 		goto free_all;

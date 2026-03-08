@@ -5,7 +5,6 @@
 
 menuconfig BACKPORT_BT
 	tristate "Bluetooth subsystem support"
-	depends on !BT
 	depends on !S390
 	depends on RFKILL || !RFKILL
 	select CRC16

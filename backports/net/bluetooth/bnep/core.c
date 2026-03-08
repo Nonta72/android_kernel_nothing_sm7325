@@ -29,7 +29,7 @@
 #include <linux/kthread.h>
 #include <linux/file.h>
 #include <linux/etherdevice.h>
-#include <linux/unaligned.h>
+#include <asm/unaligned.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/l2cap.h>
@@ -536,7 +536,7 @@ static int bnep_session(void *arg)
 
 	up_write(&bnep_session_sem);
 	free_netdev(dev);
-	module_put(THIS_MODULE);
+	module_put_and_exit(0);
 	return 0;
 }
 
@@ -550,7 +550,7 @@ static struct device *bnep_get_device(struct bnep_session *session)
 	return &conn->hcon->dev;
 }
 
-static const struct device_type bnep_type = {
+static struct device_type bnep_type = {
 	.name	= "bluetooth",
 };
 

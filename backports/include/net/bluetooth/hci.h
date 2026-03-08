@@ -1,7 +1,7 @@
 /*
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (C) 2000-2001 Qualcomm Incorporated
-   Copyright 2023-2024 NXP
+   Copyright 2023 NXP
 
    Written 2000,2001 by Maxim Krasnyansky <maxk@qualcomm.com>
 
@@ -26,14 +26,9 @@
 #ifndef __HCI_H
 #define __HCI_H
 
-#ifndef __counted_by
-#define __counted_by(m)
-#endif
-
 #define HCI_MAX_ACL_SIZE	1024
 #define HCI_MAX_SCO_SIZE	255
 #define HCI_MAX_ISO_SIZE	251
-#define HCI_MAX_ISO_BIS		31
 #define HCI_MAX_EVENT_SIZE	260
 #define HCI_MAX_FRAME_SIZE	(HCI_MAX_ACL_SIZE + 4)
 
@@ -211,17 +206,14 @@ enum {
 	 */
 	HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED,
 
-	/* When this quirk is set, the LE states reported through the
-	 * HCI_LE_READ_SUPPORTED_STATES are invalid/broken.
-	 *
-	 * This mechanism is necessary as many controllers have been seen has
-	 * having trouble initiating a connectable advertisement despite the
-	 * state combination being reported as supported.
-	 *
-	 * This quirk can be set before hci_register_dev is called or
-	 * during the hdev->setup vendor callback.
+	/* When this quirk is set, the controller has validated that
+	 * LE states reported through the HCI_LE_READ_SUPPORTED_STATES are
+	 * valid.  This mechanism is necessary as many controllers have
+	 * been seen has having trouble initiating a connectable
+	 * advertisement despite the state combination being reported as
+	 * supported.
 	 */
-	HCI_QUIRK_BROKEN_LE_STATES,
+	HCI_QUIRK_VALID_LE_STATES,
 
 	/* When this quirk is set, then erroneous data reporting
 	 * is ignored. This is mainly due to the fact that the HCI
@@ -346,33 +338,6 @@ enum {
 	 * claim to support it.
 	 */
 	HCI_QUIRK_BROKEN_READ_ENC_KEY_SIZE,
-
-	/*
-	 * When this quirk is set, the reserved bits of Primary/Secondary_PHY
-	 * inside the LE Extended Advertising Report events are discarded.
-	 * This is required for some Apple/Broadcom controllers which
-	 * abuse these reserved bits for unrelated flags.
-	 *
-	 * This quirk can be set before hci_register_dev is called or
-	 * during the hdev->setup vendor callback.
-	 */
-	HCI_QUIRK_FIXUP_LE_EXT_ADV_REPORT_PHY,
-
-	/* When this quirk is set, the HCI_OP_READ_VOICE_SETTING command is
-	 * skipped. This is required for a subset of the CSR controller clones
-	 * which erroneously claim to support it.
-	 *
-	 * This quirk must be set before hci_register_dev is called.
-	 */
-	HCI_QUIRK_BROKEN_READ_VOICE_SETTING,
-
-	/* When this quirk is set, the HCI_OP_READ_PAGE_SCAN_TYPE command is
-	 * skipped. This is required for a subset of the CSR controller clones
-	 * which erroneously claim to support it.
-	 *
-	 * This quirk must be set before hci_register_dev is called.
-	 */
-	HCI_QUIRK_BROKEN_READ_PAGE_SCAN_TYPE,
 };
 
 /* HCI device flags */
@@ -415,7 +380,6 @@ enum {
 	HCI_SETUP,
 	HCI_CONFIG,
 	HCI_DEBUGFS_CREATED,
-	HCI_POWERING_DOWN,
 	HCI_AUTO_OFF,
 	HCI_RFKILLED,
 	HCI_MGMT,
@@ -428,6 +392,7 @@ enum {
 	HCI_USER_CHANNEL,
 	HCI_EXT_CONFIGURED,
 	HCI_LE_ADV,
+	HCI_LE_ADV_0,
 	HCI_LE_PER_ADV,
 	HCI_LE_SCAN,
 	HCI_SSP_ENABLED,
@@ -482,6 +447,7 @@ enum {
 #define HCI_AUTO_OFF_TIMEOUT	msecs_to_jiffies(2000)	/* 2 seconds */
 #define HCI_ACL_CONN_TIMEOUT	msecs_to_jiffies(20000)	/* 20 seconds */
 #define HCI_LE_CONN_TIMEOUT	msecs_to_jiffies(20000)	/* 20 seconds */
+#define HCI_LE_AUTOCONN_TIMEOUT	msecs_to_jiffies(4000)	/* 4 seconds */
 
 /* HCI data types */
 #define HCI_COMMAND_PKT		0x01
@@ -718,7 +684,6 @@ enum {
 #define HCI_RSSI_INVALID	127
 
 #define HCI_SYNC_HANDLE_INVALID	0xffff
-#define HCI_SID_INVALID		0xff
 
 #define HCI_ROLE_MASTER		0x00
 #define HCI_ROLE_SLAVE		0x01
@@ -1917,8 +1882,6 @@ struct hci_cp_le_pa_create_sync {
 	__u8      sync_cte_type;
 } __packed;
 
-#define HCI_OP_LE_PA_CREATE_SYNC_CANCEL	0x2045
-
 #define HCI_OP_LE_PA_TERM_SYNC		0x2046
 struct hci_cp_le_pa_term_sync {
 	__le16    handle;
@@ -1972,7 +1935,7 @@ struct hci_cp_le_set_ext_adv_data {
 	__u8  operation;
 	__u8  frag_pref;
 	__u8  length;
-	__u8  data[] __counted_by(length);
+	__u8  data[];
 } __packed;
 
 #define HCI_OP_LE_SET_EXT_SCAN_RSP_DATA		0x2038
@@ -1981,7 +1944,7 @@ struct hci_cp_le_set_ext_scan_rsp_data {
 	__u8  operation;
 	__u8  frag_pref;
 	__u8  length;
-	__u8  data[] __counted_by(length);
+	__u8  data[];
 } __packed;
 
 #define HCI_OP_LE_SET_EXT_ADV_ENABLE		0x2039
@@ -2000,14 +1963,13 @@ struct hci_cp_le_set_per_adv_params {
 } __packed;
 
 #define HCI_MAX_PER_AD_LENGTH	252
-#define HCI_MAX_PER_AD_TOT_LEN	1650
 
 #define HCI_OP_LE_SET_PER_ADV_DATA		0x203f
 struct hci_cp_le_set_per_adv_data {
 	__u8  handle;
 	__u8  operation;
 	__u8  length;
-	__u8  data[] __counted_by(length);
+	__u8  data[];
 } __packed;
 
 #define HCI_OP_LE_SET_PER_ADV_ENABLE		0x2040
@@ -2090,7 +2052,7 @@ struct hci_cp_le_set_cig_params {
 	__le16  c_latency;
 	__le16  p_latency;
 	__u8    num_cis;
-	struct hci_cis_params cis[] __counted_by(num_cis);
+	struct hci_cis_params cis[];
 } __packed;
 
 struct hci_rp_le_set_cig_params {
@@ -2108,7 +2070,7 @@ struct hci_cis {
 
 struct hci_cp_le_create_cis {
 	__u8    num_cis;
-	struct hci_cis cis[] __counted_by(num_cis);
+	struct hci_cis cis[];
 } __packed;
 
 #define HCI_OP_LE_REMOVE_CIG			0x2065
@@ -2162,7 +2124,7 @@ struct hci_cp_le_big_create_sync {
 	__u8    mse;
 	__le16  timeout;
 	__u8    num_bis;
-	__u8    bis[] __counted_by(num_bis);
+	__u8    bis[];
 } __packed;
 
 #define HCI_OP_LE_BIG_TERM_SYNC			0x206c
@@ -2762,10 +2724,6 @@ struct hci_ev_le_per_adv_report {
 	__u8     data[];
 } __packed;
 
-#define LE_PA_DATA_COMPLETE	0x00
-#define LE_PA_DATA_MORE_TO_COME	0x01
-#define LE_PA_DATA_TRUNCATED	0x02
-
 #define HCI_EV_LE_EXT_ADV_SET_TERM	0x12
 struct hci_evt_le_ext_adv_set_term {
 	__u8	status;
@@ -2819,7 +2777,7 @@ struct hci_evt_le_create_big_complete {
 	__le16  bis_handle[];
 } __packed;
 
-#define HCI_EVT_LE_BIG_SYNC_ESTABLISHED 0x1d
+#define HCI_EVT_LE_BIG_SYNC_ESTABILISHED 0x1d
 struct hci_evt_le_big_sync_estabilished {
 	__u8    status;
 	__u8    handle;
@@ -2938,11 +2896,6 @@ static inline struct hci_acl_hdr *hci_acl_hdr(const struct sk_buff *skb)
 static inline struct hci_sco_hdr *hci_sco_hdr(const struct sk_buff *skb)
 {
 	return (struct hci_sco_hdr *) skb->data;
-}
-
-static inline struct hci_iso_hdr *hci_iso_hdr(const struct sk_buff *skb)
-{
-	return (struct hci_iso_hdr *)skb->data;
 }
 
 /* Command opcode pack/unpack */

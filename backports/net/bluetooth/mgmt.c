@@ -25,7 +25,7 @@
 /* Bluetooth HCI Management interface */
 
 #include <linux/module.h>
-#include <linux/unaligned.h>
+#include <asm/unaligned.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
@@ -33,6 +33,7 @@
 #include <net/bluetooth/l2cap.h>
 #include <net/bluetooth/mgmt.h>
 
+#include "hci_request.h"
 #include "smp.h"
 #include "mgmt_util.h"
 #include "mgmt_config.h"
@@ -41,7 +42,7 @@
 #include "aosp.h"
 
 #define MGMT_VERSION	1
-#define MGMT_REVISION	23
+#define MGMT_REVISION	22
 
 static const u16 mgmt_commands[] = {
 	MGMT_OP_READ_INDEX_LIST,
@@ -1380,14 +1381,6 @@ static int set_powered(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	hci_dev_lock(hdev);
 
-	if (!cp->val) {
-		if (hci_dev_test_flag(hdev, HCI_POWERING_DOWN)) {
-			err = mgmt_cmd_status(sk, hdev->id, MGMT_OP_SET_POWERED,
-					      MGMT_STATUS_BUSY);
-			goto failed;
-		}
-	}
-
 	if (pending_find(MGMT_OP_SET_POWERED, hdev)) {
 		err = mgmt_cmd_status(sk, hdev->id, MGMT_OP_SET_POWERED,
 				      MGMT_STATUS_BUSY);
@@ -1702,7 +1695,8 @@ static void mgmt_set_connectable_complete(struct hci_dev *hdev, void *data,
 	new_settings(hdev, cmd->sk);
 
 done:
-	mgmt_pending_remove(cmd);
+	if (cmd)
+		mgmt_pending_remove(cmd);
 
 	hci_dev_unlock(hdev);
 }
@@ -3489,8 +3483,7 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	if (cp->addr.type == BDADDR_BREDR) {
 		conn = hci_connect_acl(hdev, &cp->addr.bdaddr, sec_level,
-				       auth_type, CONN_REASON_PAIR_DEVICE,
-				       HCI_ACL_CONN_TIMEOUT);
+				       auth_type, CONN_REASON_PAIR_DEVICE);
 	} else {
 		u8 addr_type = le_addr_type(cp->addr.type);
 		struct hci_conn_params *p;
@@ -5365,9 +5358,9 @@ static u8 parse_adv_monitor_pattern(struct adv_monitor *m, u8 pattern_count,
 	for (i = 0; i < pattern_count; i++) {
 		offset = patterns[i].offset;
 		length = patterns[i].length;
-		if (offset >= HCI_MAX_EXT_AD_LENGTH ||
-		    length > HCI_MAX_EXT_AD_LENGTH ||
-		    (offset + length) > HCI_MAX_EXT_AD_LENGTH)
+		if (offset >= HCI_MAX_AD_LENGTH ||
+		    length > HCI_MAX_AD_LENGTH ||
+		    (offset + length) > HCI_MAX_AD_LENGTH)
 			return MGMT_STATUS_INVALID_PARAMS;
 
 		p = kmalloc(sizeof(*p), GFP_KERNEL);
@@ -7892,18 +7885,6 @@ unlock:
 	return err;
 }
 
-static int conn_update_sync(struct hci_dev *hdev, void *data)
-{
-	struct hci_conn_params *params = data;
-	struct hci_conn *conn;
-
-	conn = hci_conn_hash_lookup_le(hdev, &params->addr, params->addr_type);
-	if (!conn)
-		return -ECANCELED;
-
-	return hci_le_conn_update_sync(hdev, conn, params);
-}
-
 static int load_conn_param(struct sock *sk, struct hci_dev *hdev, void *data,
 			   u16 len)
 {
@@ -7937,14 +7918,12 @@ static int load_conn_param(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	hci_dev_lock(hdev);
 
-	if (param_count > 1)
-		hci_conn_params_clear_disabled(hdev);
+	hci_conn_params_clear_disabled(hdev);
 
 	for (i = 0; i < param_count; i++) {
 		struct mgmt_conn_param *param = &cp->params[i];
 		struct hci_conn_params *hci_param;
 		u16 min, max, latency, timeout;
-		bool update = false;
 		u8 addr_type;
 
 		bt_dev_dbg(hdev, "Adding %pMR (type %u)", &param->addr.bdaddr,
@@ -7972,19 +7951,6 @@ static int load_conn_param(struct sock *sk, struct hci_dev *hdev, void *data,
 			continue;
 		}
 
-		/* Detect when the loading is for an existing parameter then
-		 * attempt to trigger the connection update procedure.
-		 */
-		if (!i && param_count == 1) {
-			hci_param = hci_conn_params_lookup(hdev,
-							   &param->addr.bdaddr,
-							   addr_type);
-			if (hci_param)
-				update = true;
-			else
-				hci_conn_params_clear_disabled(hdev);
-		}
-
 		hci_param = hci_conn_params_add(hdev, &param->addr.bdaddr,
 						addr_type);
 		if (!hci_param) {
@@ -7996,25 +7962,6 @@ static int load_conn_param(struct sock *sk, struct hci_dev *hdev, void *data,
 		hci_param->conn_max_interval = max;
 		hci_param->conn_latency = latency;
 		hci_param->supervision_timeout = timeout;
-
-		/* Check if we need to trigger a connection update */
-		if (update) {
-			struct hci_conn *conn;
-
-			/* Lookup for existing connection as central and check
-			 * if parameters match and if they don't then trigger
-			 * a connection update.
-			 */
-			conn = hci_conn_hash_lookup_le(hdev, &hci_param->addr,
-						       addr_type);
-			if (conn && conn->role == HCI_ROLE_MASTER &&
-			    (conn->le_conn_min_interval != min ||
-			     conn->le_conn_max_interval != max ||
-			     conn->le_conn_latency != latency ||
-			     conn->le_supv_timeout != timeout))
-				hci_cmd_sync_queue(hdev, conn_update_sync,
-						   hci_param, NULL);
-		}
 	}
 
 	hci_dev_unlock(hdev);
@@ -8891,7 +8838,8 @@ static void add_ext_adv_params_complete(struct hci_dev *hdev, void *data,
 	}
 
 unlock:
-	mgmt_pending_free(cmd);
+	if (cmd)
+		mgmt_pending_free(cmd);
 
 	hci_dev_unlock(hdev);
 }
@@ -9492,6 +9440,7 @@ void mgmt_index_removed(struct hci_dev *hdev)
 	cancel_delayed_work_sync(&hdev->discov_off);
 	cancel_delayed_work_sync(&hdev->service_cache);
 	cancel_delayed_work_sync(&hdev->rpa_expired);
+	cancel_delayed_work_sync(&hdev->mesh_send_done);
 }
 
 void mgmt_power_on(struct hci_dev *hdev, int err)
@@ -9785,9 +9734,6 @@ bool mgmt_powering_down(struct hci_dev *hdev)
 {
 	struct mgmt_pending_cmd *cmd;
 	struct mgmt_mode *cp;
-
-	if (hci_dev_test_flag(hdev, HCI_POWERING_DOWN))
-		return true;
 
 	cmd = pending_find(MGMT_OP_SET_POWERED, hdev);
 	if (!cmd)
@@ -10099,9 +10045,6 @@ void mgmt_set_local_name_complete(struct hci_dev *hdev, u8 *name, u8 status)
 		/* If this is a HCI command related to powering on the
 		 * HCI dev don't send any mgmt signals.
 		 */
-		if (hci_dev_test_flag(hdev, HCI_POWERING_DOWN))
-			return;
-
 		if (pending_find(MGMT_OP_SET_POWERED, hdev))
 			return;
 	}
@@ -10178,6 +10121,21 @@ static bool eir_has_uuids(u8 *eir, u16 eir_len, u16 uuid_count, u8 (*uuids)[16])
 	return false;
 }
 
+static void restart_le_scan(struct hci_dev *hdev)
+{
+	/* If controller is not scanning we are done. */
+	if (!hci_dev_test_flag(hdev, HCI_LE_SCAN))
+		return;
+
+	if (time_after(jiffies + DISCOV_LE_RESTART_DELAY,
+		       hdev->discovery.scan_start +
+		       hdev->discovery.scan_duration))
+		return;
+
+	queue_delayed_work(hdev->req_workqueue, &hdev->le_scan_restart,
+			   DISCOV_LE_RESTART_DELAY);
+}
+
 static bool is_filter_match(struct hci_dev *hdev, s8 rssi, u8 *eir,
 			    u16 eir_len, u8 *scan_rsp, u8 scan_rsp_len)
 {
@@ -10212,6 +10170,8 @@ static bool is_filter_match(struct hci_dev *hdev, s8 rssi, u8 *eir,
 	 * scanning to ensure updated result with updated RSSI values.
 	 */
 	if (test_bit(HCI_QUIRK_STRICT_DUPLICATE_FILTER, &hdev->quirks)) {
+		restart_le_scan(hdev);
+
 		/* Validate RSSI value against the RSSI threshold once more. */
 		if (hdev->discovery.rssi != HCI_RSSI_INVALID &&
 		    rssi < hdev->discovery.rssi)

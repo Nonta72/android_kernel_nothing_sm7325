@@ -254,8 +254,7 @@ static int l2cap_sock_connect(struct socket *sock, struct sockaddr *addr,
 		chan->mode = L2CAP_MODE_LE_FLOWCTL;
 
 	err = l2cap_chan_connect(chan, la.l2_psm, __le16_to_cpu(la.l2_cid),
-				 &la.l2_bdaddr, la.l2_bdaddr_type,
-				 sk->sk_sndtimeo);
+				 &la.l2_bdaddr, la.l2_bdaddr_type);
 	if (err)
 		return err;
 
@@ -326,8 +325,8 @@ done:
 	return err;
 }
 
-/* TODO: Somehow keep proto_accept_arg here by modifying struct proto */
-static int l2cap_sock_accept(struct socket *sock, struct socket *newsock, int flags, bool kern)
+static int l2cap_sock_accept(struct socket *sock, struct socket *newsock,
+			     int flags, bool kern)
 {
 	DEFINE_WAIT_FUNC(wait, woken_wake_function);
 	struct sock *sk = sock->sk, *nsk;
@@ -755,8 +754,7 @@ static int l2cap_sock_setsockopt_old(struct socket *sock, int optname,
 		opts.max_tx   = chan->max_tx;
 		opts.txwin_size = chan->tx_win;
 
-		err = copy_safe_from_sockptr(&opts, sizeof(opts), optval,
-					     optlen);
+		err = bt_copy_from_sockptr(&opts, sizeof(opts), optval, optlen);
 		if (err)
 			break;
 
@@ -801,7 +799,7 @@ static int l2cap_sock_setsockopt_old(struct socket *sock, int optname,
 		break;
 
 	case L2CAP_LM:
-		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -877,10 +875,10 @@ static int l2cap_set_mode(struct l2cap_chan *chan, u8 mode)
 }
 
 static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
-				 char __user *ooptval, unsigned int optlen)
+				 char __user *poptval, unsigned int optlen)
 {
 	struct sock *sk = sock->sk;
-	sockptr_t optval = USER_SOCKPTR(ooptval);
+	sockptr_t optval = USER_SOCKPTR(poptval);
 	struct l2cap_chan *chan = l2cap_pi(sk)->chan;
 	struct bt_security sec;
 	struct bt_power pwr;
@@ -911,7 +909,7 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 
 		sec.level = BT_SECURITY_LOW;
 
-		err = copy_safe_from_sockptr(&sec, sizeof(sec), optval, optlen);
+		err = bt_copy_from_sockptr(&sec, sizeof(sec), optval, optlen);
 		if (err)
 			break;
 
@@ -958,7 +956,7 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -972,7 +970,7 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 		break;
 
 	case BT_FLUSHABLE:
-		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -1006,7 +1004,7 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 
 		pwr.force_active = BT_POWER_FORCE_ACTIVE_ON;
 
-		err = copy_safe_from_sockptr(&pwr, sizeof(pwr), optval, optlen);
+		err = bt_copy_from_sockptr(&pwr, sizeof(pwr), optval, optlen);
 		if (err)
 			break;
 
@@ -1017,7 +1015,7 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 		break;
 
 	case BT_CHANNEL_POLICY:
-		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -1030,10 +1028,17 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		/* Setting is not supported as it's the remote side that
-		 * decides this.
-		 */
-		err = -EPERM;
+		/* Only allow setting output MTU when not connected */
+		if (sk->sk_state == BT_CONNECTED) {
+			err = -EISCONN;
+			break;
+		}
+
+		err = copy_safe_from_sockptr(&mtu, sizeof(mtu), optval, optlen);
+		if (err)
+			break;
+
+		chan->omtu = mtu;
 		break;
 
 	case BT_RCVMTU:
@@ -1048,7 +1053,7 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		err = copy_safe_from_sockptr(&mtu, sizeof(mtu), optval, optlen);
+		err = bt_copy_from_sockptr(&mtu, sizeof(mtu), optval, optlen);
 		if (err)
 			break;
 
@@ -1078,8 +1083,7 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		err = copy_safe_from_sockptr(&mode, sizeof(mode), optval,
-					     optlen);
+		err = bt_copy_from_sockptr(&mode, sizeof(mode), optval, optlen);
 		if (err)
 			break;
 
@@ -1650,7 +1654,7 @@ static struct sk_buff *l2cap_sock_alloc_skb_cb(struct l2cap_chan *chan,
 		return ERR_PTR(-ENOTCONN);
 	}
 
-	skb->priority = READ_ONCE(sk->sk_priority);
+	skb->priority = sk->sk_priority;
 
 	bt_cb(skb)->l2cap.chan = chan;
 
