@@ -437,10 +437,13 @@ static int __vhci_create_device(struct vhci_data *data, __u8 opcode)
 	hdev->get_codec_config_data = vhci_get_codec_config_data;
 	hdev->wakeup = vhci_wakeup;
 	hdev->setup = vhci_setup;
-//	set_bit(HCI_QUIRK_NON_PERSISTENT_SETUP, &hdev->quirks);
+	set_bit(HCI_QUIRK_NON_PERSISTENT_SETUP, &hdev->quirks);
 
 	set_bit(HCI_QUIRK_NO_SUSPEND_NOTIFIER, &hdev->quirks);
 //	set_bit(HCI_QUIRK_BROKEN_ERR_DATA_REPORTING, &hdev->quirks);
+	set_bit(HCI_QUIRK_BROKEN_ENHANCED_SETUP_SYNC_CONN, &hdev->quirks);
+
+	set_bit(HCI_QUIRK_VALID_LE_STATES, &hdev->quirks);
 
 	/* bit 6 is for external configuration */
 	if (opcode & 0x40)
@@ -642,7 +645,7 @@ static int vhci_open(struct inode *inode, struct file *file)
 {
 	struct vhci_data *data;
 
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
+	data = kzalloc(sizeof(struct vhci_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
