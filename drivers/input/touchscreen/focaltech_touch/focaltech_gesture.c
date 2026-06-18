@@ -70,6 +70,9 @@
 #define GESTURE_C                               0x34
 #define GESTURE_CLICK                           0x25
 #define GESTURE_FINGER                          0x26
+/* Need this to override single_click to wak*/
+
+#define DOUBLE_TAP_TIMEOUT_MS                   500
 
 /*****************************************************************************
 * Private enumerations, structures and unions using typedef
@@ -97,6 +100,8 @@ int finger = 0;
 * Static variables
 *****************************************************************************/
 static struct fts_gesture_st fts_gesture_data;
+/*Add a static timestamp variable for slingle click*/
+static ktime_t last_click_time;
 
 /*****************************************************************************
 * Global variable or extern global variabls/functions
@@ -309,7 +314,7 @@ static void fts_gesture_report(struct fts_ts_data *ts_data,struct input_dev *inp
         gesture = KEY_GESTURE_DOWN;
         break;
     case GESTURE_DOUBLECLICK:
-        gesture = KEY_GESTURE_U;
+        gesture = KEY_WAKEUP;
         break;
     case GESTURE_O:
         gesture = KEY_GESTURE_O;
@@ -365,10 +370,27 @@ static void fts_gesture_report(struct fts_ts_data *ts_data,struct input_dev *inp
         }
     } else if ((gesture != -1) && (point == 1)) {
         FTS_DEBUG("Gesture Code=%d", gesture);
-        input_report_key(input_dev, gesture, 1);
-        input_sync(input_dev);
-        input_report_key(input_dev, gesture, 0);
-        input_sync(input_dev);
+        if (gesture_id == GESTURE_CLICK) {
+            ktime_t now = ktime_get();
+            s64 delta_ms = ktime_to_ms(ktime_sub(now, last_click_time));
+
+            if (delta_ms < DOUBLE_TAP_TIMEOUT_MS) {
+                FTS_DEBUG("Double tap confirmed (delta=%lldms), waking", delta_ms);
+                last_click_time = ktime_set(0, 0);
+                input_report_key(input_dev, gesture, 1);
+                input_sync(input_dev);
+                input_report_key(input_dev, gesture, 0);
+                input_sync(input_dev);
+            } else {
+                FTS_DEBUG("First tap, waiting for second (delta=%lldms)", delta_ms);
+                last_click_time = now;
+            }
+        } else {
+            input_report_key(input_dev, gesture, 1);
+            input_sync(input_dev);
+            input_report_key(input_dev, gesture, 0);
+            input_sync(input_dev);
+        }
     }
 }
 
