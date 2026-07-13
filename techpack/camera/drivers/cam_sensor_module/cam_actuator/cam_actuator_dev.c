@@ -10,36 +10,34 @@
 #include "cam_trace.h"
 #include "camera_main.h"
 
-static int cam_actuator_subdev_close_internal(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_actuator_subdev_close_internal(struct v4l2_subdev *sd)
 {
 	struct cam_actuator_ctrl_t *a_ctrl =
 		v4l2_get_subdevdata(sd);
 
 	if (!a_ctrl) {
 		CAM_ERR(CAM_ACTUATOR, "a_ctrl ptr is NULL");
-		return -EINVAL;
+		return;
 	}
 
 	mutex_lock(&(a_ctrl->actuator_mutex));
 	cam_actuator_shutdown(a_ctrl);
 	mutex_unlock(&(a_ctrl->actuator_mutex));
 
-	return 0;
+	return;
 }
 
-static int cam_actuator_subdev_close(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_actuator_subdev_close(struct v4l2_subdev *sd)
 {
 	bool crm_active = cam_req_mgr_is_open(CAM_ACTUATOR);
 
 	if (crm_active) {
 		CAM_DBG(CAM_ACTUATOR,
 			"CRM is ACTIVE, close should be from CRM");
-		return 0;
+		return;
 	}
 
-	return cam_actuator_subdev_close_internal(sd, fh);
+	cam_actuator_subdev_close_internal(sd);
 }
 
 static long cam_actuator_subdev_ioctl(struct v4l2_subdev *sd,
@@ -62,7 +60,8 @@ static long cam_actuator_subdev_ioctl(struct v4l2_subdev *sd,
 			return 0;
 		}
 
-		rc = cam_actuator_subdev_close_internal(sd, NULL);
+		cam_actuator_subdev_close_internal(sd);
+		rc = 0;
 		break;
 	default:
 		CAM_ERR(CAM_ACTUATOR, "Invalid ioctl cmd: %u", cmd);
@@ -129,7 +128,7 @@ static struct v4l2_subdev_ops cam_actuator_subdev_ops = {
 };
 
 static const struct v4l2_subdev_internal_ops cam_actuator_internal_ops = {
-	.close = cam_actuator_subdev_close,
+	.release = cam_actuator_subdev_close,
 };
 
 static int cam_actuator_init_subdev(struct cam_actuator_ctrl_t *a_ctrl)

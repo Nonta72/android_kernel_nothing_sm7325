@@ -245,35 +245,32 @@ static const struct of_device_id cam_flash_dt_match[] = {
 	{}
 };
 
-static int cam_flash_subdev_close_internal(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_flash_subdev_close_internal(struct v4l2_subdev *sd)
 {
 	struct cam_flash_ctrl *fctrl =
 		v4l2_get_subdevdata(sd);
 
 	if (!fctrl) {
 		CAM_ERR(CAM_FLASH, "Flash ctrl ptr is NULL");
-		return -EINVAL;
+		return;
 	}
 
 	mutex_lock(&fctrl->flash_mutex);
 	cam_flash_shutdown(fctrl);
 	mutex_unlock(&fctrl->flash_mutex);
 
-	return 0;
 }
 
-static int cam_flash_subdev_close(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_flash_subdev_close(struct v4l2_subdev *sd)
 {
 	bool crm_active = cam_req_mgr_is_open(CAM_FLASH);
 
 	if (crm_active) {
 		CAM_DBG(CAM_FLASH, "CRM is ACTIVE, close should be from CRM");
-		return 0;
+		return;
 	}
 
-	return cam_flash_subdev_close_internal(sd, fh);
+	cam_flash_subdev_close_internal(sd);
 }
 
 static long cam_flash_subdev_ioctl(struct v4l2_subdev *sd,
@@ -303,7 +300,8 @@ static long cam_flash_subdev_ioctl(struct v4l2_subdev *sd,
 			return 0;
 		}
 
-		rc = cam_flash_subdev_close_internal(sd, NULL);
+		cam_flash_subdev_close_internal(sd);
+		rc = 0;
 		break;
 	default:
 		CAM_ERR(CAM_FLASH, "Invalid ioctl cmd type");
@@ -388,7 +386,7 @@ static struct v4l2_subdev_ops cam_flash_subdev_ops = {
 };
 
 static const struct v4l2_subdev_internal_ops cam_flash_internal_ops = {
-	.close = cam_flash_subdev_close,
+	.release = cam_flash_subdev_close,
 };
 
 static int cam_flash_init_subdev(struct cam_flash_ctrl *fctrl)

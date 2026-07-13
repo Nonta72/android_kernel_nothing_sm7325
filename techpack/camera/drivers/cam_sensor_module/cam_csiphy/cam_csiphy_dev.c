@@ -77,35 +77,33 @@ static void cam_csiphy_debug_unregister(void)
 	root_dentry = NULL;
 }
 
-static int cam_csiphy_subdev_close_internal(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_csiphy_subdev_close_internal(struct v4l2_subdev *sd)
 {
 	struct csiphy_device *csiphy_dev =
 		v4l2_get_subdevdata(sd);
 
 	if (!csiphy_dev) {
 		CAM_ERR(CAM_CSIPHY, "csiphy_dev ptr is NULL");
-		return -EINVAL;
+		return;
 	}
 
 	mutex_lock(&csiphy_dev->mutex);
 	cam_csiphy_shutdown(csiphy_dev);
 	mutex_unlock(&csiphy_dev->mutex);
 
-	return 0;
+	return;
 }
 
-static int cam_csiphy_subdev_close(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_csiphy_subdev_close(struct v4l2_subdev *sd)
 {
 	bool crm_active = cam_req_mgr_is_open(CAM_CSIPHY);
 
 	if (crm_active) {
 		CAM_DBG(CAM_CSIPHY, "CRM is ACTIVE, close should be from CRM");
-		return 0;
+		return;
 	}
 
-	return cam_csiphy_subdev_close_internal(sd, fh);
+	cam_csiphy_subdev_close_internal(sd);
 }
 
 static long cam_csiphy_subdev_ioctl(struct v4l2_subdev *sd,
@@ -127,7 +125,8 @@ static long cam_csiphy_subdev_ioctl(struct v4l2_subdev *sd,
 			return 0;
 		}
 
-		rc = cam_csiphy_subdev_close_internal(sd, NULL);
+		cam_csiphy_subdev_close_internal(sd);
+		rc = 0;
 		break;
 	default:
 		CAM_ERR(CAM_CSIPHY, "Wrong ioctl : %d", cmd);
@@ -194,7 +193,7 @@ static const struct v4l2_subdev_ops csiphy_subdev_ops = {
 };
 
 static const struct v4l2_subdev_internal_ops csiphy_subdev_intern_ops = {
-	.close = cam_csiphy_subdev_close,
+	.release = cam_csiphy_subdev_close,
 };
 
 static int cam_csiphy_component_bind(struct device *dev,

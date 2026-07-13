@@ -10,35 +10,33 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 
-static int cam_eeprom_subdev_close_internal(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_eeprom_subdev_close_internal(struct v4l2_subdev *sd)
 {
 	struct cam_eeprom_ctrl_t *e_ctrl =
 		v4l2_get_subdevdata(sd);
 
 	if (!e_ctrl) {
 		CAM_ERR(CAM_EEPROM, "e_ctrl ptr is NULL");
-			return -EINVAL;
+			return;
 	}
 
 	mutex_lock(&(e_ctrl->eeprom_mutex));
 	cam_eeprom_shutdown(e_ctrl);
 	mutex_unlock(&(e_ctrl->eeprom_mutex));
 
-	return 0;
+	return;
 }
 
-static int cam_eeprom_subdev_close(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_eeprom_subdev_close(struct v4l2_subdev *sd)
 {
 	bool crm_active = cam_req_mgr_is_open(CAM_EEPROM);
 
 	if (crm_active) {
 		CAM_DBG(CAM_EEPROM, "CRM is ACTIVE, close should be from CRM");
-		return 0;
+		return;
 	}
 
-	return cam_eeprom_subdev_close_internal(sd, fh);
+	cam_eeprom_subdev_close_internal(sd);
 }
 
 static long cam_eeprom_subdev_ioctl(struct v4l2_subdev *sd,
@@ -60,7 +58,8 @@ static long cam_eeprom_subdev_ioctl(struct v4l2_subdev *sd,
 			return 0;
 		}
 
-		rc = cam_eeprom_subdev_close_internal(sd, NULL);
+		cam_eeprom_subdev_close_internal(sd);
+		rc = 0;
 		break;
 	default:
 		rc = -ENOIOCTLCMD;
@@ -141,7 +140,7 @@ static long cam_eeprom_init_subdev_do_ioctl(struct v4l2_subdev *sd,
 #endif
 
 static const struct v4l2_subdev_internal_ops cam_eeprom_internal_ops = {
-	.close = cam_eeprom_subdev_close,
+	.release = cam_eeprom_subdev_close,
 };
 
 static struct v4l2_subdev_core_ops cam_eeprom_subdev_core_ops = {
