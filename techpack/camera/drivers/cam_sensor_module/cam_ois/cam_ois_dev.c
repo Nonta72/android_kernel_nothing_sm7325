@@ -10,35 +10,33 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 
-static int cam_ois_subdev_close_internal(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_ois_subdev_close_internal(struct v4l2_subdev *sd)
 {
 	struct cam_ois_ctrl_t *o_ctrl =
 		v4l2_get_subdevdata(sd);
 
 	if (!o_ctrl) {
 		CAM_ERR(CAM_OIS, "o_ctrl ptr is NULL");
-			return -EINVAL;
+			return;
 	}
 
 	mutex_lock(&(o_ctrl->ois_mutex));
 	cam_ois_shutdown(o_ctrl);
 	mutex_unlock(&(o_ctrl->ois_mutex));
 
-	return 0;
+	return;
 }
 
-static int cam_ois_subdev_close(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
+static void cam_ois_subdev_close(struct v4l2_subdev *sd)
 {
 	bool crm_active = cam_req_mgr_is_open(CAM_OIS);
 
 	if (crm_active) {
 		CAM_DBG(CAM_OIS, "CRM is ACTIVE, close should be from CRM");
-		return 0;
+		return;
 	}
 
-	return cam_ois_subdev_close_internal(sd, fh);
+	cam_ois_subdev_close_internal(sd);
 }
 
 static long cam_ois_subdev_ioctl(struct v4l2_subdev *sd,
@@ -59,7 +57,8 @@ static long cam_ois_subdev_ioctl(struct v4l2_subdev *sd,
 			CAM_ERR(CAM_CORE, "SD shouldn't come from user space");
 			return 0;
 		}
-		rc = cam_ois_subdev_close_internal(sd, NULL);
+		cam_ois_subdev_close_internal(sd);
+		rc = 0;
 		break;
 	default:
 		CAM_ERR(CAM_OIS, "Wrong IOCTL cmd: %u", cmd);
@@ -137,7 +136,7 @@ static long cam_ois_init_subdev_do_ioctl(struct v4l2_subdev *sd,
 #endif
 
 static const struct v4l2_subdev_internal_ops cam_ois_internal_ops = {
-	.close = cam_ois_subdev_close,
+	.release = cam_ois_subdev_close,
 };
 
 static struct v4l2_subdev_core_ops cam_ois_subdev_core_ops = {
