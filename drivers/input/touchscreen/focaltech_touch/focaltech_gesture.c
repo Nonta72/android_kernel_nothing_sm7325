@@ -502,6 +502,9 @@ int fts_gesture_suspend(struct fts_ts_data *ts_data)
     else
         FTS_INFO("Enter into gesture(suspend) successfully");
 
+     /* Reset double-tap timer on every suspend so a tap from a previous screen-off session never carries over and triggers a false wake. */
+    last_click_time = ktime_set(0, 0);
+    
     FTS_FUNC_EXIT();
     return 0;
 }
