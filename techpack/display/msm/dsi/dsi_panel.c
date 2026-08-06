@@ -3619,6 +3619,7 @@ static ssize_t sysfs_fod_ui_write(struct device *dev,
 {
 	struct dsi_display *display = dev_get_drvdata(dev);
 	struct dsi_panel *panel = display->panel;
+	extern int finger_hbm_flag;
 	unsigned long val;
 	int rc;
 
