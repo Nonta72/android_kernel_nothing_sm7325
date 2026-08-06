@@ -28,7 +28,9 @@
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
 #define MAX_BRIGHTNESS_LEVEL 255
 int finger_hbm_flag = 0;
+EXPORT_SYMBOL(finger_hbm_flag);
 int hbm_mode_flag = 0;
+EXPORT_SYMBOL(hbm_mode_flag);
 
 /* Autorefresh will occur after FRAME_CNT frames. Large values are unlikely */
 #define AUTOREFRESH_MAX_FRAME_CNT 6
