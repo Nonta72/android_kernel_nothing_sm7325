@@ -3614,7 +3614,29 @@ static ssize_t sysfs_fod_ui_read(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%u\n", status);
 }
 
-static DEVICE_ATTR(fod_ui, 0444, sysfs_fod_ui_read, NULL);
+static ssize_t sysfs_fod_ui_write(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+	struct dsi_panel *panel = display->panel;
+	unsigned long val;
+	int rc;
+
+	rc = kstrtoul(buf, 0, &val);
+	if (rc)
+		return rc;
+
+	mutex_lock(&panel->panel_lock);
+	panel->fod_ui = !!val;
+	finger_hbm_flag = !!val;
+	mutex_unlock(&panel->panel_lock);
+
+	sysfs_notify(&panel->parent->kobj, NULL, "fod_ui");
+
+	return count;
+}
+
+static DEVICE_ATTR(fod_ui, 0644, sysfs_fod_ui_read, sysfs_fod_ui_write);
 
 static struct attribute *panel_attrs[] = {
 	&dev_attr_fod_ui.attr,
