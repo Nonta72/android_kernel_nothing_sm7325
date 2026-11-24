@@ -1,0 +1,76 @@
+name: SpeedDemon kernel
+
+# Builds the Nothing Phone (1) kernel (NOS 5.0 base, phone1_defconfig) twice:
+#   ksu    = phone1_defconfig as is (KernelSU + SUSFS, enabled in the tree)
+#   noroot = same with CONFIG_KSU off (only in the build's .config)
+# Artifacts: Image + kernel.release + .config + llvm-nm of vmlinux (KMI check) + build log tail.
+# The boot.img files are packed locally from them (NOS5 boot.img header v3 + stock ramdisk).
+on:
+  push:
+    branches: [SpeedDemon-NOS5]
+    paths: ['.github/workflows/speeddemon.yml', 'arch/arm64/configs/phone1_defconfig']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [ksu, noroot]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc bison flex libssl-dev libelf-dev cpio lz4 python-is-python3 > /dev/null
+
+      - name: Toolchain cache
+        id: tc
+        uses: actions/cache@v4
+        with:
+          path: ~/tc/r383902b1
+          key: clang-r383902b1
+
+      - name: Toolchain (Android clang r383902b1 = 11.0.2, the stock Nothing kernel's)
+        if: steps.tc.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/tc/r383902b1
+          curl -fsSL --retry 5 "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-qpr3-release/clang-r383902b1.tar.gz" | tar -xz -C ~/tc/r383902b1
+
+      - name: Build
+        run: |
+          TC=$HOME/tc/r383902b1/bin; export PATH=$TC:$PATH
+          clang --version | head -1
+          O=$PWD/out
+          M=(O=$O ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=$TC/llvm- HOSTCC=clang HOSTCXX=clang++ LOCALVERSION=)
+          make "${M[@]}" phone1_defconfig
+          if [ "${{ matrix.variant }}" = noroot ]; then
+            scripts/config --file $O/.config -d KSU
+            make "${M[@]}" olddefconfig
+          fi
+          grep -E '^CONFIG_(LOCALVERSION|KSU|KSU_SUSFS|LTO_CLANG|CFI_CLANG|MODVERSIONS)=' $O/.config || true
+          echo "KSU options set: $(grep -c '^CONFIG_KSU' $O/.config || true)"
+          echo "release: $(make -s "${M[@]}" kernelrelease)"
+          make -j$(nproc) "${M[@]}" Image 2>&1 | tee $O/build.log | grep -E 'error|warning: .*KSU|LD +vmlinux|OBJCOPY' || true
+          test -f $O/arch/arm64/boot/Image || { grep -nE 'error:|Error [0-9]' $O/build.log | head -40; tail -60 $O/build.log; exit 1; }
+
+      - name: Collect
+        run: |
+          O=$PWD/out; D=$PWD/dist; mkdir -p $D
+          cp $O/arch/arm64/boot/Image $D/Image
+          cp $O/include/config/kernel.release $D/kernel.release
+          cp $O/.config $D/config
+          $HOME/tc/r383902b1/bin/llvm-nm $O/vmlinux | gzip -9 > $D/vmlinux.nm.gz
+          tail -200 $O/build.log > $D/build.log.tail
+          strings -a $D/Image | grep -m1 'Linux version' | tee $D/linux_version.txt
+          sha256sum $D/Image
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpeedDemon-${{ matrix.variant }}
+          path: dist/
+          retention-days: 30
