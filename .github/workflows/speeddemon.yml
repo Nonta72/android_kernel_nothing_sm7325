@@ -3,6 +3,7 @@ name: SpeedDemon kernel
 # Builds the Nothing Phone (1) kernel (NOS 5.0 base, phone1_defconfig) twice:
 #   ksu    = phone1_defconfig as is (KernelSU + SUSFS, enabled in the tree)
 #   noroot = same with CONFIG_KSU off (only in the build's .config)
+# Both: CONFIG_LOCALVERSION_AUTO off in the build's .config -> release <version>-SpeedDemon.
 # Artifacts: Image + kernel.release + .config + llvm-nm of vmlinux (KMI check) + build log tail.
 # The boot.img files are packed locally from them (NOS5 boot.img header v3 + stock ramdisk).
 on:
@@ -48,11 +49,11 @@ jobs:
           O=$PWD/out
           M=(O=$O ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=$TC/llvm- HOSTCC=clang HOSTCXX=clang++ LOCALVERSION=)
           make "${M[@]}" phone1_defconfig
-          if [ "${{ matrix.variant }}" = noroot ]; then
-            scripts/config --file $O/.config -d KSU
-            make "${M[@]}" olddefconfig
-          fi
-          grep -E '^CONFIG_(LOCALVERSION|KSU|KSU_SUSFS|LTO_CLANG|CFI_CLANG|MODVERSIONS)=' $O/.config || true
+          # release = <version>-SpeedDemon exactly: no "-g<commit>" from CONFIG_LOCALVERSION_AUTO (build config only)
+          scripts/config --file $O/.config -d LOCALVERSION_AUTO
+          [ "${{ matrix.variant }}" = noroot ] && scripts/config --file $O/.config -d KSU
+          make "${M[@]}" olddefconfig
+          grep -E '^CONFIG_(LOCALVERSION|LOCALVERSION_AUTO|KSU|KSU_SUSFS|LTO_CLANG|CFI_CLANG|MODVERSIONS)=' $O/.config || true
           echo "KSU options set: $(grep -c '^CONFIG_KSU' $O/.config || true)"
           echo "release: $(make -s "${M[@]}" kernelrelease)"
           make -j$(nproc) "${M[@]}" Image 2>&1 | tee $O/build.log | grep -E 'error|warning: .*KSU|LD +vmlinux|OBJCOPY' || true
