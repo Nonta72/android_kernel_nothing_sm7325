@@ -14,7 +14,7 @@
 #     loaded from boot.img alone).
 #   - Do not enable CONFIG_UAPI_HEADER_TEST with a glibc that lacks the
 #     __float128 handling it needs (it fails to build the header tests).
-CONFIG_LOCALVERSION="-qgki"
+CONFIG_LOCALVERSION="-SpeedDemon"
 CONFIG_AUDIT=y
 CONFIG_PRINT_SUSPEND_EPOCH_QGKI=y
 CONFIG_NO_HZ=y
